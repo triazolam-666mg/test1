@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ASCII 3D Spinning Dodecahedron</title>
+  <style>
+    body {
+      background: black;
+      color: white;
+      font-family: monospace;
+      margin: 0;
+      overflow: hidden;
+    }
+    pre {
+      line-height: 0.5;
+      font-size: 8px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <pre id="output"></pre>
+  <script>
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const vertices = [];
+
+    [1, -1].forEach(x => {
+      [1, -1].forEach(y => {
+        [1, -1].forEach(z => {
+          vertices.push({ x, y, z });
+        });
+      });
+    });
+
+    [1/phi, -1/phi].forEach(y => {
+      [phi, -phi].forEach(z => {
+        vertices.push({ x: 0, y, z });
+      });
+    });
+
+    [1/phi, -1/phi].forEach(x => {
+      [phi, -phi].forEach(y => {
+        vertices.push({ x, y, z: 0 });
+      });
+    });
+
+    [phi, -phi].forEach(x => {
+      [1/phi, -1/phi].forEach(z => {
+        vertices.push({ x, y: 0, z });
+      });
+    });
+
+    const edges = [];
+
+    for (let i = 0; i < vertices.length; i++) {
+      const dists = [];
+      for (let j = 0; j < vertices.length; j++) {
+        if (i === j) continue;
+        const dx = vertices[i].x - vertices[j].x;
+        const dy = vertices[i].y - vertices[j].y;
+        const dz = vertices[i].z - vertices[j].z;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        dists.push({ j, d });
+      }
+      dists.sort((a, b) => a.d - b.d);
+      for (let k = 0; k < 3; k++) {
+        const j = dists[k].j;
+        const edge = [Math.min(i, j), Math.max(i, j)];
+        if (!edges.some(e => e[0] === edge[0] && e[1] === edge[1])) {
+          edges.push(edge);
+        }
+      }
+    }
+
+    const width = 300;
+    const height = 150;
+    const scale = 300;
+    const offsetX = Math.floor(width / 2);
+    const offsetY = Math.floor(height / 2);
+    const viewerDistance = 8;
+
+    let angleX = 1;
+    let angleY = 0;
+    let angleZ = 0;
+    let dragStartX, dragStartY;
+    let isDragging = false;
+    let rotationSpeedX = 0;
+    let rotationSpeedY = 0;
+
+    function rotate(v, angleX, angleY, angleZ) {
+      let { x, y, z } = v;
+
+      let cos = Math.cos(angleX), sin = Math.sin(angleX);
+      let y1 = y * cos - z * sin;
+      let z1 = y * sin + z * cos;
+      y = y1;
+      z = z1;
+
+      cos = Math.cos(angleY), sin = Math.sin(angleY);
+      let x1 = x * cos + z * sin;
+      let z2 = -x * sin + z * cos;
+      x = x1;
+      z = z2;
+
+      cos = Math.cos(angleZ), sin = Math.sin(angleZ);
+      let x2 = x * cos - y * sin;
+      let y2 = x * sin + y * cos;
+      return { x: x2, y: y2, z };
+    }
+
+    function project(v) {
+      const factor = scale / (viewerDistance + v.z);
+      return {
+        x: v.x * factor,
+        y: v.y * factor
+      };
+    }
+
+    function createGrid() {
+      const grid = [];
+      for (let i = 0; i < height; i++) {
+        grid.push(new Array(width).fill(' '));
+      }
+      return grid;
+    }
+
+    function drawLine(x0, y0, x1, y1, grid, char) {
+      let dx = Math.abs(x1 - x0);
+      let dy = Math.abs(y1 - y0);
+      let sx = x0 < x1 ? 1 : -1;
+      let sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy;
+      while (true) {
+        if (y0 >= 0 && y0 < grid.length && x0 >= 0 && x0 < grid[0].length) {
+          grid[y0][x0] = char;
+        }
+        if (x0 === x1 && y0 === y1) break;
+        let e2 = 2 * err;
+        if (e2 > -dy) {
+          err -= dy;
+          x0 += sx;
+        }
+        if (e2 < dx) {
+          err += dx;
+          y0 += sy;
+        }
+      }
+    }
+
+    function animate() {
+      const grid = createGrid();
+      const projectedVertices = [];
+
+      for (const v of vertices) {
+        const rotated = rotate(v, angleX, angleY, angleZ);
+        const projected = project(rotated);
+        const col = Math.round(offsetX + projected.x);
+        const row = Math.round(offsetY - projected.y);
+        projectedVertices.push({ col, row });
+      }
+
+      for (const edge of edges) {
+        const p0 = projectedVertices[edge[0]];
+        const p1 = projectedVertices[edge[1]];
+        drawLine(p0.col, p0.row, p1.col, p1.row, grid, '+');
+      }
+
+      const outputStr = grid.map(row => row.join('')).join('\n');
+      document.getElementById("output").textContent = outputStr;
+
+      angleX += rotationSpeedY;
+      angleY += rotationSpeedX;
+
+      rotationSpeedX *= 0.95;
+      rotationSpeedY *= 0.95;
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    document.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - dragStartX;
+      const deltaY = e.clientY - dragStartY;
+
+      rotationSpeedX = -deltaX * 0.005;
+      rotationSpeedY = -deltaY * 0.005;
+
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    document.addEventListener('mouseleave', () => {
+        isDragging = false;
+    });
+
+
+
+    document.addEventListener('touchdown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - dragStartX;
+      const deltaY = e.clientY - dragStartY;
+
+      rotationSpeedX = -deltaX * 0.005;
+      rotationSpeedY = -deltaY * 0.005;
+
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+    });
+
+    document.addEventListener('touchend', () => {
+      isDragging = false;
+    });
+
+    document.addEventListener('touchcancel', () => {
+        isDragging = false;
+    });
+   
+  </script>
+</body>
+</html>
